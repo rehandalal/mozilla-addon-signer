@@ -45,6 +45,20 @@ pass in an addition argument for the destination file path:
 $ mozilla-addon-signer sign path/to/unsigned.xpi path/to/signed.xpi
 ```
 
+### Signing an addon from a bugzilla bug
+
+If you want to sign an addon that was attached to a bug in bugzilla
+you can pass the bug number to:
+```
+$ mozilla-addon-signer sign_from_bug 123456
+```
+
+If you want the tool to handle downloading the signed addon you may
+pass in an addition argument for the destination file path:
+```
+$ mozilla-addon-signer sign_from_bug 123456 path/to/signed.xpi
+```
+
 ### Inspecting the certificate of a signed addon
 
 You can view the certificate for a signed addon by running:
