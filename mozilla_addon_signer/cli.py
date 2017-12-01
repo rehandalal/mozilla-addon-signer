@@ -1,7 +1,10 @@
 import configparser
 import json
 import os
+import subprocess
+import tempfile
 import traceback
+import zipfile
 
 from hashlib import sha256
 
@@ -161,3 +164,32 @@ def sign(src, dest, addon_type, bucket_name, env, profile, verbose):
         output_bucket.download_file(uploaded.get('key'), dest)
     else:
         output('\n{}'.format(json.dumps(data, indent=2, sort_keys=True)))
+
+
+@cli.command()
+@click.argument('src', type=click.File('rb'), nargs=1)
+def show_cert(src):
+    """Inspect the certificate for a signed addon."""
+    tmpdir = tempfile.mkdtemp()
+
+    try:
+        with zipfile.ZipFile(src) as zf:
+            zf.extractall(tmpdir)
+    except zipfile.BadZipfile:
+        output('ERROR: Bad zip file.', Fore.RED)
+
+    path = os.path.join(tmpdir, 'META-INF', 'mozilla.rsa')
+
+    if not os.path.exists(path):
+        output('ERROR: Source file is not a signed addon.', Fore.RED)
+        exit(1)
+
+    cmd = 'openssl pkcs7  -inform der -in {} -print_certs -text'.format(path)
+    process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
+    out, err = process.communicate()
+
+    if err:
+        output('An error occured!', Fore.RED)
+        output(err.decode())
+    else:
+        output(out.decode())
