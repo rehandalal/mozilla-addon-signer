@@ -178,17 +178,16 @@ def sign(src, dest, addon_type, bucket_name, env, profile, verbose):
 
 @cli.command()
 @click.option('--addon-type', '-t', help='The type of addon that you want to sign.')
-@click.option('--api-key', '-k', default=None, help='The Bugzilla API key to use.')
 @click.option('--bucket-name', default=None, help='The S3 bucket to upload the file to.')
 @click.option('--env', '-e', default=DEFAULT_ENV, help='The environment to sign in.')
-@click.option('--include-obsolete', '-o', is_flag=True)
 @click.option('--profile', '-p', default=None, help='The name of the AWS profile to use.')
 @click.option('--verbose', '-v', is_flag=True)
+@click.option('--api-key', '-k', default=None, help='The Bugzilla API key to use.')
+@click.option('--include-obsolete', '-o', is_flag=True)
 @click.argument('bug_number', nargs=1)
 @click.argument('dest', nargs=1, required=False)
 @click.pass_context
-def sign_from_bug(ctx, bug_number, dest, addon_type, api_key, bucket_name, env, include_obsolete,
-                  profile, verbose):
+def sign_from_bug(ctx, bug_number, api_key, include_obsolete, **kwargs):
     api_key = api_key or config.get('bugzilla', 'api_key', fallback=None)
     bz = BugzillaAPI(api_key)
     attachments = bz.get_attachments_for_bug(bug_number)
@@ -209,9 +208,7 @@ def sign_from_bug(ctx, bug_number, dest, addon_type, api_key, bucket_name, env, 
     with open(tmppath, 'wb') as f:
         f.write(base64.b64decode(attachment_data))
 
-    ctx.invoke(sign, src=tmppath, dest=dest, addon_type=addon_type, bucket_name=bucket_name,
-               env=env, profile=profile, verbose=verbose)
-
+    ctx.invoke(sign, src=tmppath, **kwargs)
 
 @cli.command()
 @click.argument('src', nargs=1)
