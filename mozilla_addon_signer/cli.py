@@ -1,12 +1,10 @@
+import base64
 import configparser
 import json
 import os
 import subprocess
 import tempfile
 import traceback
-import zipfile
-
-from hashlib import sha256
 
 import boto3
 import click
@@ -15,7 +13,9 @@ from botocore.exceptions import NoRegionError
 from colorama import Fore
 
 from mozilla_addon_signer import CONFIG_PATH
-from mozilla_addon_signer.utils import output
+from mozilla_addon_signer.bugzilla import BugzillaAPI
+from mozilla_addon_signer.utils import output, prompt_choices
+from mozilla_addon_signer.xpi import XPI
 
 
 ADDON_TYPES = [
@@ -58,6 +58,10 @@ def configure():
     profile_name = click.prompt('Default AWS Profile', default='') or None
     update_config('aws', 'profile_name', profile_name)
 
+    # Update the default bugzilla API key
+    bugzilla_api_key = click.prompt('Default Bugzilla API Key', default='') or None
+    update_config('bugzilla', 'api_key', bugzilla_api_key)
+
     # Save the config
     with open(CONFIG_PATH, 'w') as f:
         config.write(f)
@@ -69,34 +73,35 @@ def configure():
 @click.option('--env', '-e', default=DEFAULT_ENV, help='The environment to sign in.')
 @click.option('--profile', '-p', default=None, help='The name of the AWS profile to use.')
 @click.option('--verbose', '-v', is_flag=True)
-@click.argument('src', type=click.File('rb'), nargs=1)
+@click.argument('src', nargs=1)
 @click.argument('dest', nargs=1, required=False)
 def sign(src, dest, addon_type, bucket_name, env, profile, verbose):
     """Uploads and signs an addon XPI file."""
+    try:
+        xpi = XPI(src)
+    except XPI.DoesNotExist:
+        output('ERROR: `{}` does not exist.'.format(src), Fore.RED)
+        exit(1)
+    except XPI.BadZipfile:
+        output('ERROR: `{}` could not be unzipped.'.format(src), Fore.RED)
+        exit(1)
+
+    # Check if the XPI is already signed
+    if xpi.is_signed:
+        output('WARNING: XPI file is already signed.', Fore.YELLOW)
+        if not click.confirm('Are you sure you want to sign this file?'):
+            output('Aborted!')
+            exit(1)
 
     # Validate the addon type
     if addon_type not in ADDON_TYPES:
-        output('WARNING: You did not provide a valid addon type.', Fore.YELLOW)
-        output('\nPlease select one of the following:')
-        for i, value in enumerate(ADDON_TYPES):
-            output('[{}] {}'.format(i, value))
-        index = None
-        while index is None or index < 0 or index >= len(ADDON_TYPES):
-            index = click.prompt('\nAddon Type', type=int)
-        output('')
-        addon_type = ADDON_TYPES[index]
+        output('WARNING: You did not provide a valid addon type.\n', Fore.YELLOW)
+        addon_type = prompt_choices('Addon Type', ADDON_TYPES)
 
     # Validate the environment
     if env not in ENV_OPTIONS:
-        output('WARNING: You did not provide a valid environment.', Fore.YELLOW)
-        output('\nPlease select one of the following:')
-        for i, value in enumerate(ENV_OPTIONS):
-            output('[{}] {}'.format(i, value))
-        index = None
-        while index is None or index < 0 or index >= len(ENV_OPTIONS):
-            index = click.prompt('\nEnvironment', type=int, default=0)
-        output('')
-        env = ENV_OPTIONS[index]
+        output('WARNING: You did not provide a valid environment.\n', Fore.YELLOW)
+        env = prompt_choices('Environment', ENV_OPTIONS, default=0)
 
     profile = profile or config.get('aws', 'profile_name', fallback=None)
 
@@ -110,15 +115,11 @@ def sign(src, dest, addon_type, bucket_name, env, profile, verbose):
         output('ERROR: You must specify a region.', Fore.RED)
         exit(1)
 
-    # Get the hash of the XPI file
-    xpi_hash = sha256(src.read()).hexdigest()
-    src.seek(0)
-
     # Upload the XPI file to the S3 bucket
     input_bucket_name = bucket_name or 'net-mozaws-{}-addons-signxpi-input'.format(env)
     input_bucket = s3.Bucket(input_bucket_name)
-    key = os.path.basename(src.name)
-    input_bucket.put_object(Body=src, Key=key)
+    key = os.path.basename(src)
+    input_bucket.put_object(Body=xpi.open(), Key=key)
 
     # Invoke AWS Lambda function
     function_name = 'addons-sign-xpi-{}-{}'.format(addon_type, env)
@@ -127,7 +128,7 @@ def sign(src, dest, addon_type, bucket_name, env, profile, verbose):
             'bucket': input_bucket_name,
             'key': key,
         },
-        'checksum': xpi_hash,
+        'checksum': xpi.sha256sum,
     }
     response = aws_lambda.invoke(
         FunctionName=function_name,
@@ -167,24 +168,60 @@ def sign(src, dest, addon_type, bucket_name, env, profile, verbose):
 
 
 @cli.command()
-@click.argument('src', type=click.File('rb'), nargs=1)
+@click.option('--addon-type', '-t', help='The type of addon that you want to sign.')
+@click.option('--api-key', '-k', default=None, help='The Bugzilla API key to use.')
+@click.option('--bucket-name', default=None, help='The S3 bucket to upload the file to.')
+@click.option('--env', '-e', default=DEFAULT_ENV, help='The environment to sign in.')
+@click.option('--include-obsolete', '-o', is_flag=True)
+@click.option('--profile', '-p', default=None, help='The name of the AWS profile to use.')
+@click.option('--verbose', '-v', is_flag=True)
+@click.argument('bug_number', nargs=1)
+@click.argument('dest', nargs=1, required=False)
+@click.pass_context
+def sign_from_bug(ctx, bug_number, dest, addon_type, api_key, bucket_name, env, include_obsolete,
+                  profile, verbose):
+    api_key = api_key or config.get('bugzilla', 'api_key', fallback=None)
+    bz = BugzillaAPI(api_key)
+    attachments = bz.get_attachments_for_bug(bug_number)
+
+    choices = []
+    for a in attachments:
+        if not a.get('is_obsolete', 0) or include_obsolete:
+            if a.get('content_type') == 'application/x-xpinstall':
+                choices.append(a)
+
+    attachment = prompt_choices(
+        'Select attachment', choices, name_parser=lambda i: '{} by {}'.format(i['summary'], i['creator']))
+
+    attachment_data = bz.get_attachment_data(attachment['id'])
+
+    tmpdir = tempfile.mkdtemp()
+    tmppath = os.path.join(tmpdir, attachment['file_name'])
+    with open(tmppath, 'wb') as f:
+        f.write(base64.b64decode(attachment_data))
+
+    ctx.invoke(sign, src=tmppath, dest=dest, addon_type=addon_type, bucket_name=bucket_name,
+               env=env, profile=profile, verbose=verbose)
+
+
+@cli.command()
+@click.argument('src', nargs=1)
 def show_cert(src):
     """Inspect the certificate for a signed addon."""
-    tmpdir = tempfile.mkdtemp()
-
     try:
-        with zipfile.ZipFile(src) as zf:
-            zf.extractall(tmpdir)
-    except zipfile.BadZipfile:
-        output('ERROR: Bad zip file.', Fore.RED)
+        xpi = XPI(src)
+    except XPI.DoesNotExist:
+        output('ERROR: `{}` does not exist.'.format(src), Fore.RED)
+        exit(1)
+    except XPI.BadZipfile:
+        output('ERROR: `{}` could not be unzipped.'.format(src), Fore.RED)
+        exit(1)
 
-    path = os.path.join(tmpdir, 'META-INF', 'mozilla.rsa')
-
-    if not os.path.exists(path):
+    if not xpi.is_signed:
         output('ERROR: Source file is not a signed addon.', Fore.RED)
         exit(1)
 
-    cmd = 'openssl pkcs7  -inform der -in {} -print_certs -text'.format(path)
+    cmd = 'openssl pkcs7  -inform der -in {} -print_certs -text'.format(xpi.certificate_path)
     process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
     out, err = process.communicate()
 

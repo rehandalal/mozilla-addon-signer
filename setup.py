@@ -11,6 +11,7 @@ setup(
         'boto3',
         'Click',
         'colorama',
+        'requests',
     ],
     entry_points={
         'console_scripts': [
