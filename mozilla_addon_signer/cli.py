@@ -159,7 +159,16 @@ def sign(src, dest, addon_type, bucket_name, env, profile, verbose):
 
     # Download the file or dump the data
     output('Successfully signed!', Fore.GREEN)
-    if dest and 'uploaded' in data:
+
+    should_download = dest and 'uploaded' in data
+    while should_download and os.path.exists(dest):
+        output('\nWARNING: `{}` already exists.'.format(dest), Fore.YELLOW)
+        should_download = click.confirm('Do you want to overwrite this file?')
+        if not should_download and click.confirm('Would you like to pick another destination?'):
+            dest = click.prompt('Choose another destination path')
+            should_download = True
+
+    if should_download:
         uploaded = data['uploaded']
         output_bucket = s3.Bucket(uploaded.get('bucket'))
         output_bucket.download_file(uploaded.get('key'), dest)
