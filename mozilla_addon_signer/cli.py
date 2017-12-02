@@ -1,5 +1,4 @@
 import base64
-import configparser
 import json
 import os
 import subprocess
@@ -12,8 +11,8 @@ import click
 from botocore.exceptions import NoRegionError
 from colorama import Fore
 
-from mozilla_addon_signer import CONFIG_PATH
 from mozilla_addon_signer.bugzilla import BugzillaAPI
+from mozilla_addon_signer.config import config
 from mozilla_addon_signer.utils import output, prompt_choices
 from mozilla_addon_signer.xpi import XPI
 
@@ -30,19 +29,10 @@ ENV_OPTIONS = [
 ]
 
 
-with open(CONFIG_PATH, 'a+') as f:
-    f.seek(0)
-    config = configparser.ConfigParser()
-    config.read_file(f)
-
-
-def update_config(section, option, value):
-    if not section in config:
-        config[section] = {}
-    if value is None and option in config[section]:
-        del config[section][option]
-    elif value is not None:
-        config[section][option] = value
+CONFIG_WIZARD_STEPS = [
+    ('aws.profile_name', 'Default AWS Profile'),
+    ('bugzilla.api_key', 'Default Bugzilla API Key'),
+]
 
 
 @click.group()
@@ -51,20 +41,26 @@ def cli():
 
 
 @cli.command()
-def configure():
+@click.argument('key', nargs=1, required=False)
+@click.argument('value', nargs=1, required=False)
+def configure(key, value):
     """Configure defaults for this tool."""
+    if key and value:
+        config.set(key, value)
+        config.save()
+    elif key:
+        output(config.get(key, ''))
+    else:
+        for key, name in CONFIG_WIZARD_STEPS:
+            if config.has(key):
+                output('{} is already set to: {}'.format(name, config.get(key)))
+                if not click.confirm('Do you want to change this value?'):
+                    output('')
+                    continue
+            value = click.prompt(name, default='') or None
+            config.set(key, value)
 
-    # Update the default AWS profile
-    profile_name = click.prompt('Default AWS Profile', default='') or None
-    update_config('aws', 'profile_name', profile_name)
-
-    # Update the default bugzilla API key
-    bugzilla_api_key = click.prompt('Default Bugzilla API Key', default='') or None
-    update_config('bugzilla', 'api_key', bugzilla_api_key)
-
-    # Save the config
-    with open(CONFIG_PATH, 'w') as f:
-        config.write(f)
+        config.save()
 
 
 @cli.command()
@@ -103,7 +99,7 @@ def sign(src, dest, addon_type, bucket_name, env, profile, verbose):
         output('WARNING: You did not provide a valid environment.\n', Fore.YELLOW)
         env = prompt_choices('Environment', ENV_OPTIONS, default=0)
 
-    profile = profile or config.get('aws', 'profile_name', fallback=None)
+    profile = profile or config.get('aws.profile_name', default=None)
 
     # Boto setup
     session = boto3.Session(profile_name=profile)
@@ -188,7 +184,7 @@ def sign(src, dest, addon_type, bucket_name, env, profile, verbose):
 @click.argument('dest', nargs=1, required=False)
 @click.pass_context
 def sign_from_bug(ctx, bug_number, api_key, include_obsolete, **kwargs):
-    api_key = api_key or config.get('bugzilla', 'api_key', fallback=None)
+    api_key = api_key or config.get('bugzilla.api_key', default=None)
     bz = BugzillaAPI(api_key)
     attachments = bz.get_attachments_for_bug(bug_number)
 
