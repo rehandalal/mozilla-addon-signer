@@ -195,7 +195,8 @@ def sign_from_bug(ctx, bug_number, api_key, include_obsolete, **kwargs):
                 choices.append(a)
 
     attachment = prompt_choices(
-        'Select attachment', choices, name_parser=lambda i: '{} by {}'.format(i['summary'], i['creator']))
+        'Select attachment', choices,
+        name_parser=lambda i: '{} by {}'.format(i['summary'], i['creator']))
 
     attachment_data = bz.get_attachment_data(attachment['id'])
 
@@ -205,6 +206,7 @@ def sign_from_bug(ctx, bug_number, api_key, include_obsolete, **kwargs):
         f.write(base64.b64decode(attachment_data))
 
     ctx.invoke(sign, src=tmppath, **kwargs)
+
 
 @cli.command()
 @click.argument('src', nargs=1)
