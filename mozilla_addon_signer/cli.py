@@ -192,20 +192,23 @@ def sign(src, dest, addon_type, api_key, attach, bucket_name, env, profile, verb
 
 @cli.command()
 @click.option('--addon-type', '-t', help='The type of addon that you want to sign.')
-@click.option('--attach', '-b', default=None, help='Attach the signed addon to a bug.')
 @click.option('--bucket-name', default=None, help='The S3 bucket to upload the file to.')
 @click.option('--env', '-e', default=DEFAULT_ENV, help='The environment to sign in.')
 @click.option('--profile', '-p', default=None, help='The name of the AWS profile to use.')
 @click.option('--verbose', '-v', is_flag=True)
 @click.option('--api-key', '-k', default=None, help='The Bugzilla API key to use.')
 @click.option('--include-obsolete', '-o', is_flag=True)
+@click.option('--no-attach', is_flag=True, help='Do not reattach the signed XPI to the bug.')
 @click.argument('bug_number', nargs=1)
 @click.argument('dest', nargs=1, required=False)
 @click.pass_context
-def sign_from_bug(ctx, bug_number, api_key, include_obsolete, **kwargs):
+def sign_from_bug(ctx, bug_number, api_key, include_obsolete, no_attach, **kwargs):
     api_key = api_key or config.get('bugzilla.api_key', default=None)
     bz = BugzillaAPI(api_key)
     attachments = bz.get_attachments_for_bug(bug_number)
+
+    if not no_attach:
+        kwargs['attach'] = bug_number
 
     choices = []
     for a in attachments:
