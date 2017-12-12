@@ -12,6 +12,7 @@ setup(
         'Click',
         'colorama',
         'requests',
+        'untangle',
     ],
     entry_points={
         'console_scripts': [

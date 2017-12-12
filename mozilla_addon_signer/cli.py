@@ -65,13 +65,15 @@ def configure(key, value):
 
 @cli.command()
 @click.option('--addon-type', '-t', help='The type of addon that you want to sign.')
+@click.option('--api-key', '-k', default=None, help='The Bugzilla API key to use.')
+@click.option('--attach', '-b', default=None, help='Attach the signed addon to a bug.')
 @click.option('--bucket-name', default=None, help='The S3 bucket to upload the file to.')
 @click.option('--env', '-e', default=DEFAULT_ENV, help='The environment to sign in.')
 @click.option('--profile', '-p', default=None, help='The name of the AWS profile to use.')
 @click.option('--verbose', '-v', is_flag=True)
 @click.argument('src', nargs=1)
 @click.argument('dest', nargs=1, required=False)
-def sign(src, dest, addon_type, bucket_name, env, profile, verbose):
+def sign(src, dest, addon_type, api_key, attach, bucket_name, env, profile, verbose):
     """Uploads and signs an addon XPI file."""
     try:
         xpi = XPI(src)
@@ -81,6 +83,9 @@ def sign(src, dest, addon_type, bucket_name, env, profile, verbose):
     except XPI.BadZipfile:
         output('ERROR: `{}` could not be unzipped.'.format(src), Fore.RED)
         exit(1)
+
+    if not dest:
+        dest = xpi.suggested_filename(mark_signed=True)
 
     # Check if the XPI is already signed
     if xpi.is_signed:
@@ -154,9 +159,15 @@ def sign(src, dest, addon_type, bucket_name, env, profile, verbose):
         exit(1)
 
     # Download the file or dump the data
-    output('Successfully signed!', Fore.GREEN)
+    if 'uploaded' in data:
+        uploaded = data['uploaded']
+        output('Successfully signed!', Fore.GREEN)
+    else:
+        output('ERROR: Something went wrong!', Fore.RED)
+        exit(1)
 
-    should_download = dest and 'uploaded' in data
+    should_download = not attach
+
     while should_download and os.path.exists(dest):
         output('\nWARNING: `{}` already exists.'.format(dest), Fore.YELLOW)
         should_download = click.confirm('Do you want to overwrite this file?')
@@ -165,15 +176,23 @@ def sign(src, dest, addon_type, bucket_name, env, profile, verbose):
             should_download = True
 
     if should_download:
-        uploaded = data['uploaded']
         output_bucket = s3.Bucket(uploaded.get('bucket'))
         output_bucket.download_file(uploaded.get('key'), dest)
+    elif attach and 'uploaded' in data:
+        api_key = api_key or config.get('bugzilla.api_key', default=None)
+        bz = BugzillaAPI(api_key)
+        signed_xpi = s3.Object(uploaded.get('bucket'), uploaded.get('key'))
+        attachment_data = base64.b64encode(signed_xpi.get()['Body'].read())
+        bz.create_attachment_for_bug(attach, attachment_data=attachment_data, file_name=dest,
+                                     summary=dest, content_type='application/x-xpinstall')
+        output('Attachment successfully created!', Fore.GREEN)
     else:
         output('\n{}'.format(json.dumps(data, indent=2, sort_keys=True)))
 
 
 @cli.command()
 @click.option('--addon-type', '-t', help='The type of addon that you want to sign.')
+@click.option('--attach', '-b', default=None, help='Attach the signed addon to a bug.')
 @click.option('--bucket-name', default=None, help='The S3 bucket to upload the file to.')
 @click.option('--env', '-e', default=DEFAULT_ENV, help='The environment to sign in.')
 @click.option('--profile', '-p', default=None, help='The name of the AWS profile to use.')

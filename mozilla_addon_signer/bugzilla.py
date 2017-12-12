@@ -14,6 +14,11 @@ class BugzillaAPI(object):
         res.raise_for_status()
         return res.json()
 
+    def post(self, url, data=None):
+        res = self.session.post(self.api_base + url, data=data)
+        res.raise_for_status()
+        return res.json()
+
     def get_attachments_for_bug(self, bug_number):
         response = self.get('/bug/{}/attachment'.format(bug_number), {
             'exclude_fields': 'data'
@@ -25,3 +30,15 @@ class BugzillaAPI(object):
             'include_fields': 'data'
         })
         return response.get('attachments', {}).get(str(id), {}).get('data')
+
+    def create_attachment_for_bug(self, bug_number, attachment_data, file_name, summary,
+                                  content_type):
+        response = self.post('/bug/{}/attachment'.format(bug_number), {
+            'ids': [bug_number],
+            'data': attachment_data,
+            'file_name': file_name,
+            'summary': summary,
+            'content_type': content_type,
+        })
+        return response
+
