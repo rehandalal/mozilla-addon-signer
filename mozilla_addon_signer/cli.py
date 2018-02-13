@@ -96,7 +96,8 @@ def sign(src, dest, addon_type, api_key, attach, bucket_name, env, profile, verb
 
     # Validate the addon type
     if addon_type not in ADDON_TYPES:
-        output('WARNING: You did not provide a valid addon type.\n', Fore.YELLOW)
+        if addon_type:
+            output('WARNING: You did not provide a valid addon type.\n', Fore.YELLOW)
         addon_type = prompt_choices('Addon Type', ADDON_TYPES)
 
     # Validate the environment
