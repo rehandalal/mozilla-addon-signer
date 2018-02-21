@@ -197,6 +197,7 @@ def sign(ctx, src, dest, addon_type, api_key, attach, bucket_name, env, profile,
 @click.option('--api-key', '-k', default=None, help='The Bugzilla API key to use.')
 @click.argument('bug_number', nargs=1)
 def check_needinfo(bug_number, api_key):
+    """Checks for an open needinfo on the given bug, and offers to clear it."""
     api_key = api_key or config.get('bugzilla.api_key', default=None)
     bz = BugzillaAPI(api_key)
     bug = bz.get_bug(bug_number)
