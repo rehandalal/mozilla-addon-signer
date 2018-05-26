@@ -88,7 +88,9 @@ def configure(key, value):
 @click.option('--verbose', '-v', is_flag=True)
 @click.argument('src', nargs=1)
 @click.argument('dest', nargs=1, required=False)
-def sign(src, dest, addon_type, api_key, attach, bucket_name, env, profile, verbose):
+@click.pass_context
+def sign(ctx, src, dest, addon_type, api_key, attach, bucket_name, env, profile, verbose,
+         **kwargs):
     """Uploads and signs an addon XPI file."""
     xpi = load_xpi(src)
 
@@ -104,7 +106,8 @@ def sign(src, dest, addon_type, api_key, attach, bucket_name, env, profile, verb
 
     # Validate the addon type
     if addon_type not in ADDON_TYPES:
-        output('WARNING: You did not provide a valid addon type.\n', Fore.YELLOW)
+        if addon_type:
+            output('WARNING: You did not provide a valid addon type.\n', Fore.YELLOW)
         addon_type = prompt_choices('Addon Type', ADDON_TYPES)
 
     # Validate the environment
@@ -196,6 +199,28 @@ def sign(src, dest, addon_type, api_key, attach, bucket_name, env, profile, verb
         output('Attachment successfully created!', Fore.GREEN)
     else:
         output('\n{}'.format(json.dumps(data, indent=2, sort_keys=True)))
+
+    ctx.invoke(check_needinfo, bug_number=attach, **kwargs)
+
+
+@cli.command()
+@click.option('--api-key', '-k', default=None, help='The Bugzilla API key to use.')
+@click.argument('bug_number', nargs=1)
+def check_needinfo(bug_number, api_key):
+    """Checks for an open needinfo on the given bug, and offers to clear it."""
+    api_key = api_key or config.get('bugzilla.api_key', default=None)
+    bz = BugzillaAPI(api_key)
+    bug = bz.get_bug(bug_number)
+    flags = bug.get_flags()
+
+    user_email = bz.who_am_i()['name']
+    for flag in flags:
+        needs_info = flag['name'] == 'needinfo' and flag['status'] == '?'
+        if needs_info and flag['requestee'] == user_email:
+            if click.confirm('Clear your needinfo from {}?'.format(flag['setter'])):
+                bug.set_flags([{'id': flag['id'], 'status': 'X'}])
+                output('Needinfo cleared', Fore.GREEN)
+            break
 
 
 @cli.command()
