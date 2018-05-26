@@ -1,0 +1,5 @@
+[run]
+include = mozilla_addon_signer/*
+
+[report]
+show_missing = True

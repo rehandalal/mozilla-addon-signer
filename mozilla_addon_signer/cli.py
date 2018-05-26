@@ -35,6 +35,21 @@ CONFIG_WIZARD_STEPS = [
 ]
 
 
+def load_xpi(fp):
+    try:
+        xpi = XPI(fp)
+    except XPI.DoesNotExist:
+        output('ERROR: `{}` does not exist.'.format(fp), Fore.RED)
+        exit(1)
+    except XPI.BadZipfile:
+        output('ERROR: `{}` could not be unzipped.'.format(fp), Fore.RED)
+        exit(1)
+    except XPI.InvalidXPI:
+        output('ERROR: `{}` is not a valid web extension.'.format(fp), Fore.RED)
+        exit(1)
+    return xpi
+
+
 @click.group()
 def cli():
     pass
@@ -74,16 +89,10 @@ def configure(key, value):
 @click.argument('src', nargs=1)
 @click.argument('dest', nargs=1, required=False)
 @click.pass_context
-def sign(ctx, src, dest, addon_type, api_key, attach, bucket_name, env, profile, verbose, **kwargs):
+def sign(ctx, src, dest, addon_type, api_key, attach, bucket_name, env, profile, verbose,
+         **kwargs):
     """Uploads and signs an addon XPI file."""
-    try:
-        xpi = XPI(src)
-    except XPI.DoesNotExist:
-        output('ERROR: `{}` does not exist.'.format(src), Fore.RED)
-        exit(1)
-    except XPI.BadZipfile:
-        output('ERROR: `{}` could not be unzipped.'.format(src), Fore.RED)
-        exit(1)
+    xpi = load_xpi(src)
 
     if not dest:
         dest = xpi.suggested_filename(mark_signed=True)
@@ -206,7 +215,8 @@ def check_needinfo(bug_number, api_key):
 
     user_email = bz.who_am_i()['name']
     for flag in flags:
-        if flag['name'] == 'needinfo' and flag['status'] == '?' and flag['requestee'] == user_email:
+        needs_info = flag['name'] == 'needinfo' and flag['status'] == '?'
+        if needs_info and flag['requestee'] == user_email:
             if click.confirm('Clear your needinfo from {}?'.format(flag['setter'])):
                 bug.set_flags([{'id': flag['id'], 'status': 'X'}])
                 output('Needinfo cleared', Fore.GREEN)
@@ -257,14 +267,7 @@ def sign_from_bug(ctx, bug_number, api_key, include_obsolete, no_attach, **kwarg
 @click.argument('src', nargs=1)
 def show_cert(src):
     """Inspect the certificate for a signed addon."""
-    try:
-        xpi = XPI(src)
-    except XPI.DoesNotExist:
-        output('ERROR: `{}` does not exist.'.format(src), Fore.RED)
-        exit(1)
-    except XPI.BadZipfile:
-        output('ERROR: `{}` could not be unzipped.'.format(src), Fore.RED)
-        exit(1)
+    xpi = load_xpi(src)
 
     if not xpi.is_signed:
         output('ERROR: Source file is not a signed addon.', Fore.RED)

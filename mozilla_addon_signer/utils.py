@@ -1,14 +1,15 @@
 import click
 
 from colorama import Style
+from six import print_
 
 
 def output(str, *styles):
-    print(Style.RESET_ALL, end='')
+    print_(Style.RESET_ALL, end='')
     if styles:
-        print(*styles, end='')
-    print(str, end='')
-    print(Style.RESET_ALL)
+        print_(*styles, end='')
+    print_(str, end='')
+    print_(Style.RESET_ALL)
 
 
 def prompt_choices(text, choices, default=None, name_parser=None):

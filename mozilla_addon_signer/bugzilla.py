@@ -1,6 +1,9 @@
 import requests
 
 
+BUG_NUMBER_TYPE_EXC_MESSAGE = 'Bug number must be int or str, not {}'
+
+
 class BugzillaAPI(object):
     api_base = 'https://bugzilla.mozilla.org/rest'
 
@@ -47,11 +50,11 @@ class BugzillaAPI(object):
     def who_am_i(self):
         return self.get('/whoami')
 
-class Bug(object):
 
+class Bug(object):
     def __init__(self, api, bug_number):
         self.api = api
-        assert type(bug_number) in [int, str], f'bug number must be int or str, not {type(bug_number)}'
+        assert type(bug_number) in [int, str], BUG_NUMBER_TYPE_EXC_MESSAGE.format(type(bug_number))
         self.bug_number = bug_number
 
     def get_attachments(self):
