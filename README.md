@@ -1,4 +1,7 @@
 # mozilla-addon-signer
+
+[![Travis](https://img.shields.io/travis/rehandalal/mozilla-addon-signer.svg)](https://github.com/rehandalal/mozilla-addon-signer)
+
 A CLI for signing addon XPIs
 
 
