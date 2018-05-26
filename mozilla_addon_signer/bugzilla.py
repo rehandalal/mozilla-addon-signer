@@ -41,4 +41,3 @@ class BugzillaAPI(object):
             'content_type': content_type,
         })
         return response
-

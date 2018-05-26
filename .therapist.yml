@@ -2,4 +2,4 @@ actions:
   flake8:
     include: "*.py"
     exclude: "docs/*.py"
-  run: flake8 {files}
+    run: flake8 {files}
