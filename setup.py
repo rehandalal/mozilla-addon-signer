@@ -12,6 +12,7 @@ setup(
         'Click',
         'colorama',
         'requests',
+        'six',
         'untangle',
     ],
     entry_points={

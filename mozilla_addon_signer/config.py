@@ -68,5 +68,8 @@ class Config(object):
 
 try:
     config = Config(CONFIG_PATH)
-except FileNotFoundError:
-    config = Config(None)
+except Exception as ex:
+    if isinstance(ex.__cause__, IOError):
+        config = Config(None)
+    else:
+        raise
