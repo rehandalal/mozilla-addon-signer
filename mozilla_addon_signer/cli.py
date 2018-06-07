@@ -246,7 +246,8 @@ def sign_from_bug(ctx, bug_number, api_key, include_obsolete, no_attach, **kwarg
     choices = []
     for a in attachments:
         if not a.get('is_obsolete', 0) or include_obsolete:
-            if a.get('content_type') == 'application/x-xpinstall':
+            content_type = a.get('content_type')
+            if content_type in ['application/x-xpinstall', 'application/zip']:
                 choices.append(a)
 
     attachment = prompt_choices(
