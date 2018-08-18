@@ -200,7 +200,8 @@ def sign(ctx, src, dest, addon_type, api_key, attach, bucket_name, env, profile,
     else:
         output('\n{}'.format(json.dumps(data, indent=2, sort_keys=True)))
 
-    ctx.invoke(check_needinfo, bug_number=attach, **kwargs)
+    if attach:
+        ctx.invoke(check_needinfo, bug_number=attach, **kwargs)
 
 
 @cli.command()
