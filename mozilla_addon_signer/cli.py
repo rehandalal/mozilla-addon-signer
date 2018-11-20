@@ -1,6 +1,7 @@
 import base64
 import json
 import os
+import requests
 import subprocess
 import tempfile
 import traceback
@@ -261,6 +262,31 @@ def sign_from_bug(ctx, bug_number, api_key, include_obsolete, no_attach, **kwarg
     tmppath = os.path.join(tmpdir, attachment['file_name'])
     with open(tmppath, 'wb') as f:
         f.write(base64.b64decode(attachment_data))
+
+    ctx.invoke(sign, src=tmppath, **kwargs)
+
+
+@cli.command()
+@click.option('--addon-type', '-t', help='The type of addon that you want to sign.')
+@click.option('--bucket-name', default=None, help='The S3 bucket to upload the file to.')
+@click.option('--env', '-e', default=DEFAULT_ENV, help='The environment to sign in.')
+@click.option('--profile', '-p', default=None, help='The name of the AWS profile to use.')
+@click.option('--verbose', '-v', is_flag=True)
+@click.argument('url', nargs=1)
+@click.argument('dest', nargs=1, required=False)
+@click.pass_context
+def sign_from_url(ctx, url, **kwargs):
+    try:
+        r = requests.get(url)
+        r.raise_for_status()
+    except requests.exceptions.HTTPError as err:
+        output(err, Fore.RED)
+        exit(1)
+
+    tmpdir = tempfile.mkdtemp()
+    tmppath = os.path.join(tmpdir, 'tmp.xpi')
+    with open(tmppath, 'wb') as f:
+        f.write(r.content)
 
     ctx.invoke(sign, src=tmppath, **kwargs)
 
