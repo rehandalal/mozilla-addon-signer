@@ -36,18 +36,26 @@ CONFIG_WIZARD_STEPS = [
 ]
 
 
-def load_xpi(fp):
+def load_xpi(fp, verbose=False):
     try:
         xpi = XPI(fp)
-    except XPI.DoesNotExist:
+    except XPI.DoesNotExist as e:
         output('ERROR: `{}` does not exist.'.format(fp), Fore.RED)
+        if verbose:
+            print(e)
         exit(1)
-    except XPI.BadZipfile:
+    except XPI.BadZipfile as e:
         output('ERROR: `{}` could not be unzipped.'.format(fp), Fore.RED)
+        if verbose:
+            print(e)
         exit(1)
-    except XPI.InvalidXPI:
+    except XPI.InvalidXPI as e:
         output('ERROR: `{}` is not a valid web extension.'.format(fp), Fore.RED)
+        if verbose:
+            print(e)
         exit(1)
+    if verbose:
+        print('Loaded xpi', xpi)
     return xpi
 
 
@@ -87,16 +95,23 @@ def configure(key, value):
 @click.option('--env', '-e', default=DEFAULT_ENV, help='The environment to sign in.')
 @click.option('--profile', '-p', default=None, help='The name of the AWS profile to use.')
 @click.option('--verbose', '-v', is_flag=True)
+@click.option(
+    '--suffix',
+    '-s',
+    multiple=True,
+    default=None,
+    help='A suffix to append to the filename. May be repeated Ex: "test"',
+)
 @click.argument('src', nargs=1)
 @click.argument('dest', nargs=1, required=False)
 @click.pass_context
-def sign(ctx, src, dest, addon_type, api_key, attach, bucket_name, env, profile, verbose,
+def sign(ctx, src, dest, addon_type, api_key, attach, bucket_name, env, profile, verbose, suffix,
          **kwargs):
     """Uploads and signs an addon XPI file."""
-    xpi = load_xpi(src)
+    xpi = load_xpi(src, verbose=verbose)
 
     if not dest:
-        dest = xpi.suggested_filename(mark_signed=True)
+        dest = xpi.suggested_filename(mark_signed=True, extra_suffixes=suffix)
 
     # Check if the XPI is already signed
     if xpi.is_signed:
@@ -236,6 +251,13 @@ def check_needinfo(bug_number, api_key):
 @click.option('--no-attach', is_flag=True, help='Do not reattach the signed XPI to the bug.')
 @click.argument('bug_number', nargs=1)
 @click.argument('dest', nargs=1, required=False)
+@click.option(
+    '--suffix',
+    '-s',
+    multiple=True,
+    default=None,
+    help='A suffix to append to the filename. May be repeated Ex: "test"',
+)
 @click.pass_context
 def sign_from_bug(ctx, bug_number, api_key, include_obsolete, no_attach, **kwargs):
     api_key = api_key or config.get('bugzilla.api_key', default=None)
@@ -293,9 +315,10 @@ def sign_from_url(ctx, url, **kwargs):
 
 @cli.command()
 @click.argument('src', nargs=1)
-def show_cert(src):
+@click.option('--verbose', '-v', is_flag=True)
+def show_cert(src, verbose):
     """Inspect the certificate for a signed addon."""
-    xpi = load_xpi(src)
+    xpi = load_xpi(src, verbose=verbose)
 
     if not xpi.is_signed:
         output('ERROR: Source file is not a signed addon.', Fore.RED)
@@ -306,7 +329,7 @@ def show_cert(src):
     out, err = process.communicate()
 
     if err:
-        output('An error occured!', Fore.RED)
+        output('An error occurred!', Fore.RED)
         output(err.decode())
     else:
         output(out.decode())
