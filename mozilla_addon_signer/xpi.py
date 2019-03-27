@@ -62,7 +62,7 @@ class XPI(object):
             except KeyError:
                 raise self.MissingID()
         else:
-            raise self.InvalidXPI()
+            raise self.InvalidXPI('No manifest.json or install.rdf found')
 
     @property
     def sha256sum(self):
@@ -85,12 +85,16 @@ class XPI(object):
         else:
             return self.addon_data.get('version')
 
-    def suggested_filename(self, mark_signed=False):
-        suffix = '-signed' if self.is_signed or mark_signed else ''
-        suggested = self.id
+    def suggested_filename(self, mark_signed=False, extra_suffixes=None):
+        parts = [self.id]
         if self.version:
-            suggested += '-{}'.format(self.version)
-        return '{}{}.xpi'.format(suggested, suffix)
+            parts.append(self.version)
+        if self.is_signed or mark_signed:
+            parts.append('signed')
+        if extra_suffixes:
+            parts.extend(extra_suffixes)
+
+        return '-'.join(parts) + '.xpi'
 
     def open(self, mode='rb'):
         return open(self.path, mode)
