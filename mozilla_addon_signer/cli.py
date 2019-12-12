@@ -3,6 +3,7 @@ import json
 import os
 import requests
 import subprocess
+import sys
 import tempfile
 import traceback
 
@@ -248,6 +249,7 @@ def check_needinfo(bug_number, api_key):
 @click.option('--verbose', '-v', is_flag=True)
 @click.option('--api-key', '-k', default=None, help='The Bugzilla API key to use.')
 @click.option('--include-obsolete', '-o', is_flag=True)
+@click.option('--include-content-type', '-C', default=None, help='Additional content types to include')
 @click.option('--no-attach', is_flag=True, help='Do not reattach the signed XPI to the bug.')
 @click.argument('bug_number', nargs=1)
 @click.argument('dest', nargs=1, required=False)
@@ -259,20 +261,38 @@ def check_needinfo(bug_number, api_key):
     help='A suffix to append to the filename. May be repeated Ex: "test"',
 )
 @click.pass_context
-def sign_from_bug(ctx, bug_number, api_key, include_obsolete, no_attach, **kwargs):
+def sign_from_bug(ctx, bug_number, api_key, include_obsolete, no_attach, verbose, include_content_type, **kwargs):
     api_key = api_key or config.get('bugzilla.api_key', default=None)
     bz = BugzillaAPI(api_key)
     attachments = bz.get_attachments_for_bug(bug_number)
+    allowed_content_types = ['application/x-xpinstall', 'application/zip']
+    if include_content_type:
+        allowed_content_types.append(include_content_type)
 
     if not no_attach:
         kwargs['attach'] = bug_number
 
     choices = []
     for a in attachments:
-        if not a.get('is_obsolete', 0) or include_obsolete:
-            content_type = a.get('content_type')
-            if content_type in ['application/x-xpinstall', 'application/zip']:
-                choices.append(a)
+        if a.get('is_obsolete', 0) and not include_obsolete:
+            if verbose:
+                print(f"Excluding obsolete attachment {a['summary']}")
+            continue
+
+        content_type = a.get('content_type')
+        if content_type not in allowed_content_types:
+            if verbose:
+                print(
+                    f"Excluding non-extension attachment {a['summary']}"
+                    f"(content-type={content_type!r}"
+                )
+            continue
+
+        choices.append(a)
+
+    if not choices:
+        print("Error: No valid attachments found. Try --verbose to see more details")
+        sys.exit(1)
 
     attachment = prompt_choices(
         'Select attachment', choices,
